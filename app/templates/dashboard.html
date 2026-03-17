@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Plex Playlist Generator{% endblock %}
+
+{% block content %}
+
+{% if not plex_connected %}
+<article class="warn-msg">
+  Cannot connect to Plex server. Check that Plex Media Server is running, then <a href="/settings">reconfigure in Settings</a>.
+</article>
+{% endif %}
+
+{% if auto_refresh_paused %}
+<article class="info-msg">
+  Auto-refresh is paused globally. <a href="/settings">Resume in Settings.</a>
+</article>
+{% endif %}
+
+<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:1.5rem;">
+  <h2 style="margin:0;">Playlists</h2>
+  <button onclick="document.getElementById('create-form').toggleAttribute('open')" class="outline">+ New playlist</button>
+</div>
+
+<details id="create-form">
+  <summary style="display:none;"></summary>
+  <article>
+    <h3>Create a new playlist</h3>
+    {% if library_size < 20 %}
+    <p class="error-msg">Your library has too few tracks ({{ library_size }}) for playlist generation. Add more music to Plex first.</p>
+    {% else %}
+    <form method="post" action="/playlists/create">
+      <label>Describe the situation or mood
+        <textarea name="prompt" rows="2" placeholder="e.g. an hour of instrumental music for deep focus work" required></textarea>
+      </label>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+        <label>Playlist name (optional)
+          <input type="text" name="name" placeholder="Generated from prompt">
+        </label>
+        <label>Number of tracks
+          <input type="number" name="target_count" value="50" min="20" max="500">
+        </label>
+      </div>
+      {% if library_size > 0 %}
+      <small>Library: {{ library_size }} tracks</small>
+      {% endif %}
+      <button type="submit">Generate</button>
+    </form>
+    {% endif %}
+  </article>
+</details>
+
+{% if playlists %}
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Tracks</th>
+      <th>Match rate</th>
+      <th>Last refresh</th>
+      <th>Auto</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for p in playlists %}
+  <tr>
+    <td>
+      <a href="/playlists/{{ p.id }}">{{ p.name }}</a>
+      {% if p.used_sonic_analysis %}<small title="Generated with Sonic Analysis data"> SA</small>{% endif %}
+      {% if p.status == 'generating' %}<small> ⏳ Generating…</small>{% endif %}
+      {% if p.status == 'failed' %}<small class="error-msg"> Failed: {{ p.failure_reason }}</small>{% endif %}
+      {% if p.status == 'orphaned' %}
+      <small class="warn-msg"> Out of sync — deleted in Plex</small>
+      <form method="post" action="/playlists/{{ p.id }}/remove-orphan" style="display:inline;">
+        <button type="submit" class="outline contrast" style="padding:0.1rem 0.4rem; font-size:0.8rem;">Remove</button>
+      </form>
+      {% endif %}
+    </td>
+    <td>{{ p.actual_track_count }}/{{ p.target_track_count }}</td>
+    <td>{% if p.hit_rate %}{{ "%.0f"|format(p.hit_rate) }}%{% else %}—{% endif %}</td>
+    <td>{{ p.last_refreshed_at or '—' }}</td>
+    <td>
+      <form method="post" action="/playlists/{{ p.id }}/toggle-auto-refresh" style="display:inline;">
+        <button type="submit" class="outline secondary" style="padding:0.1rem 0.5rem; font-size:0.8rem;">
+          {{ 'On' if p.auto_refresh else 'Off' }}
+        </button>
+      </form>
+    </td>
+    <td style="white-space:nowrap;">
+      <form method="post" action="/playlists/{{ p.id }}/refresh" style="display:inline;">
+        <button type="submit" class="outline" style="padding:0.1rem 0.5rem; font-size:0.8rem;">Refresh</button>
+      </form>
+      <form method="post" action="/playlists/{{ p.id }}/delete" style="display:inline;"
+            onsubmit="return confirm('Delete {{ p.name }}?')">
+        <button type="submit" class="outline contrast" style="padding:0.1rem 0.5rem; font-size:0.8rem;">Delete</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% else %}
+<article style="text-align:center; padding:3rem 1rem;">
+  <p>No playlists yet.</p>
+  <p>Describe a situation or mood above and hit <strong>Generate</strong> — the tool will build a playlist from tracks in your Plex library.</p>
+</article>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,9 @@
+CLAUDE.local.md
+HANDOFF.md
+.claude/settings.local.json
+.env
+data/*.db
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/

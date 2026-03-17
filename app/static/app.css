@@ -1,0 +1,58 @@
+/* Plex Playlist Generator — minimal overrides on Pico CSS */
+
+.error-msg {
+  color: var(--pico-color-red-600, #c0392b);
+  background: var(--pico-color-red-50, #fdf2f2);
+  border-left: 3px solid var(--pico-color-red-400, #e74c3c);
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--pico-border-radius);
+}
+
+.warn-msg {
+  color: var(--pico-color-amber-700, #92400e);
+  background: var(--pico-color-amber-50, #fffbeb);
+  border-left: 3px solid var(--pico-color-amber-400, #fbbf24);
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--pico-border-radius);
+}
+
+.info-msg {
+  color: var(--pico-color-blue-700, #1e40af);
+  background: var(--pico-color-blue-50, #eff6ff);
+  border-left: 3px solid var(--pico-color-blue-400, #60a5fa);
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--pico-border-radius);
+}
+
+/* Keep table rows compact */
+table td, table th {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9rem;
+}
+
+nav[aria-label="breadcrumb"] ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem 0;
+  display: flex;
+  gap: 0.5rem;
+}
+
+nav[aria-label="breadcrumb"] ul li::before {
+  content: "›";
+  margin-right: 0.5rem;
+  color: var(--pico-muted-color);
+}
+
+nav[aria-label="breadcrumb"] ul li:first-child::before {
+  display: none;
+}
+
+details summary {
+  cursor: pointer;
+}
+
+/* Touch-friendly buttons */
+button, [role="button"] {
+  min-height: 44px;
+}

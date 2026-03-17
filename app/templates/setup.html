@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Setup — Plex Playlist Generator</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <main class="container" style="max-width: 480px; margin-top: 4rem;">
+    <h1>Setup</h1>
+
+    {% if step == "plex" %}
+    <p>Connect your Plex Media Server to get started.</p>
+
+    {% if error %}<article class="error-msg">{{ error }}</article>{% endif %}
+
+    <form method="post" action="/setup/plex">
+      <fieldset>
+        <legend>Sign in with Plex</legend>
+        <label>Username or email
+          <input type="text" name="username" autocomplete="username">
+        </label>
+        <label>Password
+          <input type="password" name="password" autocomplete="current-password">
+        </label>
+        <button type="submit">Sign in</button>
+      </fieldset>
+    </form>
+
+    <details style="margin-top: 1.5rem;">
+      <summary>Paste a token manually</summary>
+      <form method="post" action="/setup/plex" style="margin-top: 1rem;">
+        <label>Plex token
+          <input type="text" name="token" placeholder="xxxx-xxxx-xxxx-xxxx">
+        </label>
+        <small>Find your token in Plex: any media item → ... → Get Info → View XML → X-Plex-Token in the URL.</small>
+        <button type="submit" class="secondary" style="margin-top: 0.75rem;">Use this token</button>
+      </form>
+    </details>
+
+    {% elif step == "llm" %}
+    <p>Configure your LLM provider. Any OpenAI-compatible API works (OpenAI, local Ollama, etc.).</p>
+
+    {% if error %}<article class="error-msg">{{ error }}</article>{% endif %}
+
+    <form method="post" action="/setup/llm">
+      <label>Base URL
+        <input type="url" name="base_url" value="https://api.openai.com/v1" required>
+        <small>For Ollama: http://localhost:11434/v1</small>
+      </label>
+      <label>API key
+        <input type="password" name="api_key" required>
+      </label>
+      <label>Model
+        <input type="text" name="model" placeholder="gpt-4o" required>
+      </label>
+      <label>Context window (tokens)
+        <input type="number" name="context_window" placeholder="128000">
+        <small>Leave blank to use defaults for known models.</small>
+      </label>
+      <label>Temperature
+        <input type="number" name="temperature" value="0.9" min="0" max="2" step="0.1">
+        <small>Higher = more variety between generations.</small>
+      </label>
+      <button type="submit">Save and continue</button>
+    </form>
+    {% endif %}
+  </main>
+</body>
+</html>

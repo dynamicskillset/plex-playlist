@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}{{ playlist.name }} — Plex Playlist Generator{% endblock %}
+
+{% block content %}
+
+<nav aria-label="breadcrumb"><ul><li><a href="/">Dashboard</a></li><li>{{ playlist.name }}</li></ul></nav>
+
+{% if sse_key %}
+<article id="progress-box" class="info-msg">
+  <span id="progress-text">Starting…</span>
+</article>
+<script>
+(function() {
+  const box = document.getElementById('progress-box');
+  const text = document.getElementById('progress-text');
+  const es = new EventSource('/playlists/{{ playlist.id }}/progress?sse_key={{ sse_key }}');
+  es.onmessage = function(e) {
+    text.textContent = e.data;
+    if (e.data.startsWith('Done') || e.data.startsWith('Failed') || e.data.startsWith('Completed')) {
+      es.close();
+      setTimeout(() => location.reload(), 1500);
+    }
+  };
+  es.onerror = function() { es.close(); };
+})();
+</script>
+{% endif %}
+
+<div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:1rem; margin-bottom:1rem;">
+  <div>
+    <h2 style="margin-bottom:0.25rem;">{{ playlist.name }}</h2>
+    <small>
+      Created {{ playlist.created_at }} ·
+      {{ playlist.actual_track_count }}/{{ playlist.target_track_count }} tracks ·
+      {% if playlist.used_sonic_analysis %}With Sonic Analysis · {% endif %}
+      Status: {{ playlist.status }}
+    </small>
+  </div>
+  <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+    <form method="post" action="/playlists/{{ playlist.id }}/refresh">
+      <button class="outline secondary">Refresh</button>
+    </form>
+    <form method="post" action="/playlists/{{ playlist.id }}/regenerate">
+      <button class="outline secondary">Full regenerate</button>
+    </form>
+    <form method="post" action="/playlists/{{ playlist.id }}/toggle-auto-refresh">
+      <button class="outline secondary">Auto-refresh: {{ 'On' if playlist.auto_refresh else 'Off' }}</button>
+    </form>
+    <form method="post" action="/playlists/{{ playlist.id }}/delete"
+          onsubmit="return confirm('Delete this playlist from Plex and database?')">
+      <button class="outline contrast">Delete</button>
+    </form>
+  </div>
+</div>
+
+<!-- Prompt -->
+<article>
+  <div id="prompt-display">
+    <strong>Prompt:</strong> {{ playlist.prompt }}
+    <button class="outline secondary" style="float:right; padding:0.2rem 0.6rem; font-size:0.85rem;"
+            onclick="document.getElementById('prompt-edit').hidden=false; this.hidden=true;">Edit prompt</button>
+  </div>
+  <div id="prompt-edit" hidden>
+    <form method="post" action="/playlists/{{ playlist.id }}/edit-prompt">
+      <textarea name="prompt" rows="2">{{ playlist.prompt }}</textarea>
+      <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+        <button type="submit">Save and regenerate</button>
+        <button type="button" class="secondary outline"
+                onclick="document.getElementById('prompt-edit').hidden=true; document.querySelector('#prompt-display button').hidden=false;">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+</article>
+
+<!-- Generation reports -->
+{% if reports %}
+<details open>
+  <summary><strong>Generation report</strong></summary>
+  {% for r in reports %}
+  <article style="margin-top:0.75rem;">
+    <small>{{ r.completed_at }} · {{ r.triggered_by }}</small>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:0.5rem; margin-top:0.5rem;">
+      <div><strong>{{ r.tracks_validated }}/{{ r.tracks_suggested }}</strong><br><small>validated/suggested</small></div>
+      <div><strong>{{ r.llm_passes }}</strong><br><small>LLM passes</small></div>
+      <div><strong>{{ r.match_exact }}</strong><br><small>exact matches</small></div>
+      <div><strong>{{ r.match_fuzzy }}</strong><br><small>fuzzy matches</small></div>
+      <div><strong>{{ r.match_artist_fallback }}</strong><br><small>artist fallback</small></div>
+      <div><strong>{{ r.rejected_artist_not_found }}</strong><br><small>artist not found</small></div>
+      <div><strong>{{ r.rejected_album_not_found }}</strong><br><small>album not found</small></div>
+      <div><strong>{{ r.rejected_track_not_found }}</strong><br><small>track not found</small></div>
+    </div>
+    {% if r.new_library_items is not none %}
+    <p style="margin-top:0.5rem;"><small>Refresh triggered by {{ r.new_library_items }} new library items — {{ r.new_tracks_added }} new tracks added.</small></p>
+    {% endif %}
+    {% if r.used_sonic_analysis %}<small>Sonic Analysis used.</small>{% endif %}
+  </article>
+  {% if not loop.first %}</details>{% endif %}
+  {% if not loop.last %}<details><summary><small>Older report — {{ r.completed_at }}</small></summary>{% endif %}
+  {% endfor %}
+</details>
+{% endif %}
+
+<!-- Track list -->
+{% if tracks %}
+<details>
+  <summary><strong>Tracks ({{ tracks|length }})</strong></summary>
+  <table>
+    <thead><tr><th>#</th><th>Artist</th><th>Album</th><th>Track</th></tr></thead>
+    <tbody>
+    {% for artist, album, title in tracks %}
+    <tr><td>{{ loop.index }}</td><td>{{ artist }}</td><td>{{ album }}</td><td>{{ title }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</details>
+{% endif %}
+
+<!-- Refresh history -->
+{% if refresh_history %}
+<details>
+  <summary><strong>Refresh history</strong></summary>
+  <table>
+    <thead><tr><th>Date</th><th>Trigger</th><th>Added</th><th>Removed</th><th>Total</th></tr></thead>
+    <tbody>
+    {% for r in refresh_history %}
+    <tr>
+      <td>{{ r.completed_at }}</td>
+      <td>{{ r.triggered_by }}</td>
+      <td>{{ r.tracks_added }}</td>
+      <td>{{ r.tracks_removed }}</td>
+      <td>{{ r.tracks_total }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</details>
+{% endif %}
+
+{% endblock %}

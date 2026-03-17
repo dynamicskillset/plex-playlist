@@ -1,0 +1,12 @@
+services:
+  playlist-generator:
+    build: .
+    ports:
+      - "8484:8484"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PLEX_URL=${PLEX_URL:-http://host.docker.internal:32400}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

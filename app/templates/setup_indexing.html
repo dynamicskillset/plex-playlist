@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Setup — Plex Playlist Generator</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <main class="container" style="max-width: 480px; margin-top: 4rem;">
+    <h1>Setup</h1>
+    <p>Connected to Plex. Building your library index&hellip;</p>
+
+    <article id="status-box" class="info-msg">
+      <span id="status-text">Starting&hellip;</span>
+    </article>
+
+    <div id="error-box" class="error-msg" hidden></div>
+
+    <progress id="progress-bar"></progress>
+  </main>
+
+  <script>
+    const statusText = document.getElementById('status-text');
+    const errorBox = document.getElementById('error-box');
+    const progressBar = document.getElementById('progress-bar');
+
+    const es = new EventSource('/setup/plex/indexing/progress');
+
+    es.onmessage = function(e) {
+      const msg = e.data;
+      if (msg.startsWith('error:')) {
+        es.close();
+        progressBar.remove();
+        document.getElementById('status-box').remove();
+        errorBox.textContent = msg.replace('error: ', '');
+        errorBox.hidden = false;
+      } else if (msg === 'done') {
+        es.close();
+        statusText.textContent = 'Done. Continuing to LLM setup\u2026';
+        progressBar.value = 1;
+        progressBar.max = 1;
+        setTimeout(() => { window.location.href = '/setup?step=llm'; }, 800);
+      } else {
+        statusText.textContent = msg;
+      }
+    };
+
+    es.onerror = function() {
+      es.close();
+      statusText.textContent = 'Connection lost. Trying to continue\u2026';
+      setTimeout(() => { window.location.href = '/setup?step=llm'; }, 2000);
+    };
+  </script>
+</body>
+</html>
