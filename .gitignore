@@ -1,6 +1,16 @@
 CLAUDE.local.md
 HANDOFF.md
 .claude/settings.local.json
+
+# Docs (keep README.md and CHANGELOG.md only)
+CLAUDE.md
+CLAUDE.global.md
+PLAN.md
+STATE.md
+MISTAKES.md
+plex-grounded-playlist-generator-prd.md
+setup.sh
+.claude/
 .env
 data/*.db
 __pycache__/
