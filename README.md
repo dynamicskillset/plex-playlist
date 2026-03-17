@@ -78,4 +78,4 @@ Any OpenAI-compatible API works:
 
 ## Licence
 
-MIT
+AGPL 3.0
