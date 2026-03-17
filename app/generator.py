@@ -96,10 +96,7 @@ async def generate_playlist(
             is_full_regeneration=is_full_regeneration,
             progress=emit,
         )
-        for t in batch_validated:
-            if t["plex_track_id"] not in validated_ids:
-                validated.append(t)
-                validated_ids.add(t["plex_track_id"])
+        validated.extend(batch_validated)
 
     stats.tracks_validated = len(validated) - len(already_validated or [])
 
@@ -204,6 +201,7 @@ def _validate_suggestions(
 
         if result.plex_track_id in already_validated_ids:
             continue
+        already_validated_ids.add(result.plex_track_id)
 
         if result.match_type == MatchType.EXACT:
             stats.match_exact += 1
