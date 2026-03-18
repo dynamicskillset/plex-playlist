@@ -56,3 +56,22 @@ details summary {
 button, [role="button"] {
   min-height: 44px;
 }
+
+/* Scrollable table wrapper for narrow viewports */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Responsive 2-column form grid */
+.form-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 600px) {
+  .form-2col {
+    grid-template-columns: 1fr;
+  }
+}

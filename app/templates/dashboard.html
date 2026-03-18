@@ -31,7 +31,7 @@
       <label>Describe the situation or mood
         <textarea name="prompt" rows="2" placeholder="e.g. an hour of instrumental music for deep focus work" required></textarea>
       </label>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+      <div class="form-2col">
         <label>Playlist name (optional)
           <input type="text" name="name" placeholder="Generated from prompt">
         </label>
@@ -49,6 +49,7 @@
 </details>
 
 {% if playlists %}
+<div class="table-scroll">
 <table>
   <thead>
     <tr>
@@ -98,6 +99,7 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 
 {% else %}
 <article style="text-align:center; padding:3rem 1rem;">

@@ -106,6 +106,7 @@
 {% if tracks %}
 <details>
   <summary><strong>Tracks ({{ tracks|length }})</strong></summary>
+  <div class="table-scroll">
   <table>
     <thead><tr><th>#</th><th>Artist</th><th>Album</th><th>Track</th></tr></thead>
     <tbody>
@@ -114,6 +115,7 @@
     {% endfor %}
     </tbody>
   </table>
+  </div>
 </details>
 {% endif %}
 
@@ -121,6 +123,7 @@
 {% if refresh_history %}
 <details>
   <summary><strong>Refresh history</strong></summary>
+  <div class="table-scroll">
   <table>
     <thead><tr><th>Date</th><th>Trigger</th><th>Added</th><th>Removed</th><th>Total</th></tr></thead>
     <tbody>
@@ -135,6 +138,7 @@
     {% endfor %}
     </tbody>
   </table>
+  </div>
 </details>
 {% endif %}
 

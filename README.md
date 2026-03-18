@@ -22,7 +22,39 @@ Plexamp's built-in AI playlist generation regularly suggests tracks that aren't 
 - An OpenAI-compatible LLM API (OpenAI, Ollama, or similar)
 - Docker
 
-## Quick start
+## Quick start (macOS menu bar)
+
+For macOS users who want easy access without managing a terminal, a menu bar app is included.
+
+**One-time setup:**
+
+```bash
+pip3 install rumps
+```
+
+**Run:**
+
+```bash
+python3 menubar.py
+```
+
+A `♩` / `♫` icon appears in your menu bar. Click it to open the app, or to start/stop the Docker container. The icon updates every 10 seconds to reflect the container's current state.
+
+**Auto-start on login:**
+
+1. Add **Docker Desktop** as a Login Item: System Settings → General → Login Items → `+` → `/Applications/Docker.app`
+2. Add the menu bar app as a Login Item the same way, pointing to `menubar.py` (or create a `.command` wrapper script — see below)
+
+To create a double-clickable launcher:
+
+```bash
+echo '#!/bin/bash\n/usr/local/bin/python3 /path/to/plex-playlist/menubar.py' > ~/Desktop/PlexPlaylist.command
+chmod +x ~/Desktop/PlexPlaylist.command
+```
+
+The menu bar app waits for Docker Desktop to be ready before starting the container, so login-item ordering does not matter.
+
+## Quick start (Docker)
 
 ```bash
 git clone https://github.com/dynamicskillset/plex-playlist.git
@@ -75,6 +107,7 @@ Any OpenAI-compatible API works:
 - aiosqlite (SQLite)
 - rapidfuzz (fuzzy matching)
 - Jinja2 + Pico CSS + vanilla JS
+- rumps (macOS menu bar app, optional)
 
 ## Licence
 
