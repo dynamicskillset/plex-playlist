@@ -6,9 +6,7 @@ Usage:
 
 To auto-start on login, add a Login Item in System Settings > General > Login Items.
 """
-import os
 import subprocess
-import tempfile
 import threading
 import webbrowser
 from pathlib import Path
@@ -20,24 +18,10 @@ PROJECT_DIR = str(Path(__file__).parent)
 CHECK_INTERVAL = 10  # seconds
 
 
-def _make_sf_icon(symbol: str) -> str | None:
-    """Render an SF Symbol as a PNG template image for the menu bar."""
-    try:
-        from AppKit import NSBitmapImageRep, NSImage
-        img = NSImage.imageWithSystemSymbolName_accessibilityDescription_(symbol, None)
-        if img is None:
-            return None
-        img.setTemplate_(True)
-        tiff = img.TIFFRepresentation()
-        rep = NSBitmapImageRep.imageRepWithData_(tiff)
-        data = rep.representationUsingType_properties_(4, None)  # NSPNGFileType = 4
-        if data is None:
-            return None
-        path = os.path.join(tempfile.gettempdir(), "plex_playlist_menubar.png")
-        data.writeToFile_atomically_(path, True)
-        return path
-    except Exception:
-        return None
+def _app_icon_path() -> str | None:
+    """Return the path to the bundled app icon, if it exists."""
+    icon = Path(__file__).parent / "app" / "static" / "icon.png"
+    return str(icon) if icon.exists() else None
 
 
 def _docker_daemon_ready() -> bool:
@@ -79,11 +63,11 @@ def _docker_running() -> bool:
 
 class PlexPlaylistApp(rumps.App):
     def __init__(self):
-        icon_path = _make_sf_icon("play.circle")
+        icon_path = _app_icon_path()
         super().__init__("", icon=icon_path, quit_button=None)
         self._has_icon = icon_path is not None
         if not self._has_icon:
-            self.title = "♩"  # text fallback if SF Symbol unavailable
+            self.title = "♩"  # text fallback if icon file missing
         self._open_item = rumps.MenuItem("Open Plex Playlist", callback=self._open)
         self._start_item = rumps.MenuItem("Start", callback=self._start)
         self._stop_item = rumps.MenuItem("Stop", callback=self._stop)
