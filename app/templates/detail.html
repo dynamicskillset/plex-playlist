@@ -43,9 +43,9 @@
     <form method="post" action="/playlists/{{ playlist.id }}/regenerate">
       <button class="outline secondary">Full regenerate</button>
     </form>
-    <form method="post" action="/playlists/{{ playlist.id }}/toggle-auto-refresh">
-      <button class="outline secondary">Auto-refresh: {{ 'On' if playlist.auto_refresh else 'Off' }}</button>
-    </form>
+    <button class="outline secondary freq-btn" data-id="{{ playlist.id }}">
+      Auto-refresh: {{ (playlist.refresh_frequency or 'Off') | capitalize }}
+    </button>
     <form method="post" action="/playlists/{{ playlist.id }}/delete"
           onsubmit="return confirm('Delete this playlist from Plex and database?')">
       <button class="outline contrast">Delete</button>
@@ -141,5 +141,15 @@
   </div>
 </details>
 {% endif %}
+
+<script>
+document.querySelectorAll('.freq-btn').forEach(function(btn) {
+  btn.addEventListener('click', async function() {
+    var res = await fetch('/playlists/' + this.dataset.id + '/toggle-auto-refresh', {method: 'POST'});
+    var data = await res.json();
+    this.textContent = 'Auto-refresh: ' + data.label;
+  });
+});
+</script>
 
 {% endblock %}

@@ -13,16 +13,23 @@ MAX_RETRIES = 1  # one retry on 429/5xx per pass
 
 # Known context window defaults (tokens) per model substring
 CONTEXT_WINDOW_DEFAULTS = {
+    # OpenAI
     "gpt-4o": 128_000,
     "gpt-4": 128_000,
     "gpt-3.5": 16_385,
-    "claude-3-5": 200_000,
-    "claude-3": 200_000,
-    "claude-sonnet": 200_000,
-    "claude-opus": 200_000,
-    "claude-haiku": 200_000,
-    "llama": 8_192,
+    # Anthropic
+    "claude": 200_000,
+    # Google Gemini
+    "gemini-2.5": 1_000_000,
+    "gemini-2": 1_000_000,
+    "gemini-1.5": 1_000_000,
+    "gemini-pro": 32_768,
+    # Mistral
+    "mistral-large": 128_000,
+    "mistral-small": 32_768,
     "mistral": 32_768,
+    # Local / Ollama
+    "llama": 8_192,
     "gemma": 8_192,
 }
 
@@ -36,6 +43,7 @@ class LLMConfig:
     model: str
     context_window: int
     temperature: float = 0.9
+    provider: str = "openai"  # "openai" | "anthropic" | "google"
 
 
 def default_context_window(model: str) -> int:
@@ -162,20 +170,27 @@ async def call_llm(
     system_msg: str,
     user_msg: str,
 ) -> list[dict]:
-    """Call the LLM and return parsed track suggestions.
+    """Dispatch to the appropriate provider implementation."""
+    if config.provider == "anthropic":
+        return await _call_anthropic(config, system_msg, user_msg)
+    if config.provider == "google":
+        return await _call_google(config, system_msg, user_msg)
+    return await _call_openai_compatible(config, system_msg, user_msg)
 
-    Retries once on 429/5xx. Raises on unrecoverable failure.
-    Returns list of {"artist", "album", "track"} dicts (may be empty on parse failure).
-    """
+
+async def _call_openai_compatible(
+    config: LLMConfig,
+    system_msg: str,
+    user_msg: str,
+) -> list[dict]:
     import asyncio
 
-    messages = [
-        {"role": "system", "content": system_msg},
-        {"role": "user", "content": user_msg},
-    ]
     payload = {
         "model": config.model,
-        "messages": messages,
+        "messages": [
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": user_msg},
+        ],
         "temperature": config.temperature,
     }
     headers = {
@@ -205,6 +220,91 @@ async def call_llm(
             raise
         except Exception as e:
             logger.error("LLM call failed: %s", e)
+            raise
+
+    return []
+
+
+async def _call_anthropic(
+    config: LLMConfig,
+    system_msg: str,
+    user_msg: str,
+) -> list[dict]:
+    import asyncio
+
+    base = (config.base_url.rstrip("/") if config.base_url else "https://api.anthropic.com/v1")
+    headers = {
+        "x-api-key": config.api_key,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": config.model,
+        "max_tokens": 4096,
+        "system": system_msg,
+        "messages": [{"role": "user", "content": user_msg}],
+        "temperature": config.temperature,
+    }
+
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                resp = await client.post(f"{base}/messages", json=payload, headers=headers)
+                if resp.status_code in (429, 500, 502, 503, 504):
+                    if attempt < MAX_RETRIES:
+                        logger.warning("Anthropic returned %d, retrying in %ds", resp.status_code, RETRY_WAIT_SECONDS)
+                        await asyncio.sleep(RETRY_WAIT_SECONDS)
+                        continue
+                    resp.raise_for_status()
+                resp.raise_for_status()
+                data = resp.json()
+                raw = data["content"][0]["text"]
+                return parse_llm_response(raw)
+        except httpx.HTTPStatusError:
+            raise
+        except Exception as e:
+            logger.error("Anthropic call failed: %s", e)
+            raise
+
+    return []
+
+
+async def _call_google(
+    config: LLMConfig,
+    system_msg: str,
+    user_msg: str,
+) -> list[dict]:
+    import asyncio
+
+    model = config.model or "gemini-2.5-flash"
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models"
+        f"/{model}:generateContent?key={config.api_key}"
+    )
+    payload = {
+        "systemInstruction": {"parts": [{"text": system_msg}]},
+        "contents": [{"role": "user", "parts": [{"text": user_msg}]}],
+        "generationConfig": {"temperature": config.temperature},
+    }
+
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                resp = await client.post(url, json=payload)
+                if resp.status_code in (429, 500, 502, 503, 504):
+                    if attempt < MAX_RETRIES:
+                        logger.warning("Google returned %d, retrying in %ds", resp.status_code, RETRY_WAIT_SECONDS)
+                        await asyncio.sleep(RETRY_WAIT_SECONDS)
+                        continue
+                    resp.raise_for_status()
+                resp.raise_for_status()
+                data = resp.json()
+                raw = data["candidates"][0]["content"]["parts"][0]["text"]
+                return parse_llm_response(raw)
+        except httpx.HTTPStatusError:
+            raise
+        except Exception as e:
+            logger.error("Google call failed: %s", e)
             raise
 
     return []
@@ -288,15 +388,31 @@ def _filter_valid_items(items: list) -> list[dict]:
     return valid
 
 
-async def validate_llm_connection(config: LLMConfig) -> bool:
-    """Make a minimal test call to verify the LLM config is working."""
+async def validate_llm_connection(config: LLMConfig) -> tuple[bool, str]:
+    """Make a minimal test call to verify the LLM config is working.
+
+    Returns (success, error_message). error_message is empty on success.
+    """
     try:
-        result = await call_llm(
+        await call_llm(
             config,
             system_msg="Reply with a valid JSON array containing one item.",
             user_msg='[{"artist": "Test", "album": "Test", "track": "Test"}]',
         )
-        return True
+        return True, ""
+    except httpx.HTTPStatusError as e:
+        msg = f"HTTP {e.response.status_code}"
+        try:
+            body = e.response.json()
+            detail = (body.get("error", {}).get("message")
+                      or body.get("error_description")
+                      or str(body))
+            msg = f"{msg}: {detail}"
+        except Exception:
+            msg = f"{msg}: {e.response.text[:200]}"
+        logger.warning("LLM validation failed: %s", msg)
+        return False, msg
     except Exception as e:
         logger.warning("LLM validation failed: %s", e)
+        return False, str(e)
         return False

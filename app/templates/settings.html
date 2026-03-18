@@ -23,33 +23,150 @@
   <p><small><a href="/setup?step=plex">Sign in again with username/password</a></small></p>
 </article>
 
+<!-- LLM config -->
+{% if cfg.get('llm_model') and cfg.get('llm_api_key') %}
+<article>
+  <h3>LLM configuration</h3>
+  <p>Configured: <strong>{{ cfg.get('llm_provider', 'openai') | capitalize }} — {{ cfg.get('llm_model') }}</strong></p>
+  <form method="post" action="/settings/remove-llm"
+        onsubmit="return confirm('Remove LLM configuration?')">
+    <button type="submit" class="outline contrast">Remove</button>
+  </form>
+</article>
+{% endif %}
+
 <form method="post" action="/settings/save">
 
 <!-- LLM config -->
 <article>
-  <h3>LLM configuration</h3>
-  <label>Base URL
-    <input type="url" name="llm_base_url" value="{{ cfg.get('llm_base_url', '') }}">
+  <h3>{% if cfg.get('llm_model') and cfg.get('llm_api_key') %}Update LLM configuration{% else %}LLM configuration{% endif %}</h3>
+
+  <label>Provider
+    <select name="llm_provider" id="llm-provider">
+      <option value="openai"    {% if cfg.get('llm_provider', 'openai') == 'openai'    %}selected{% endif %}>OpenAI / Mistral / Ollama (OpenAI-compatible)</option>
+      <option value="anthropic" {% if cfg.get('llm_provider') == 'anthropic' %}selected{% endif %}>Anthropic (Claude)</option>
+      <option value="google"    {% if cfg.get('llm_provider') == 'google'    %}selected{% endif %}>Google (Gemini)</option>
+    </select>
   </label>
+
+  <div id="base-url-row">
+    <label>Base URL
+      <input type="text" name="llm_base_url" id="llm-base-url" value="{{ cfg.get('llm_base_url', '') }}" placeholder="https://api.openai.com/v1">
+      <small id="base-url-hint"></small>
+    </label>
+  </div>
+
   <label>API key
     <input type="password" name="llm_api_key" value="{{ cfg.get('llm_api_key', '') }}" autocomplete="off">
   </label>
+
   <label>Model
-    <input type="text" name="llm_model" value="{{ cfg.get('llm_model', '') }}">
+    <input type="text" name="llm_model" id="llm-model" value="{{ cfg.get('llm_model', '') }}" list="model-suggestions" placeholder="e.g. gpt-4o">
+    <datalist id="model-suggestions"></datalist>
+    <small id="model-hint"></small>
   </label>
+
   <label>Context window (tokens)
     <input type="number" name="llm_context_window" value="{{ cfg.get('llm_context_window', '') }}">
-    <small>Leave blank for automatic default.</small>
   </label>
+  <small>Leave blank for automatic default.</small>
   <label>Temperature
     <input type="number" name="llm_temperature" value="{{ cfg.get('llm_temperature', 0.9) }}" min="0" max="2" step="0.1">
-    <small>Higher = more variety between generations. Lower = more consistent results.</small>
   </label>
+  <small>Higher = more variety between generations. Lower = more consistent results.</small>
   <label>Estimated cost per LLM call ($)
     <input type="number" name="llm_cost_per_call" value="{{ cfg.get('llm_cost_per_call', 0.01) }}" step="0.001" min="0">
-    <small>Used only for the cost estimate display below. Not a billing integration.</small>
   </label>
+  <small>Used only for the cost estimate display below. Not a billing integration.</small>
 </article>
+
+<script>
+(function() {
+  var PROVIDERS = {
+    openai: {
+      baseUrlPlaceholder: 'https://api.openai.com/v1',
+      baseUrlHint: 'For Ollama: http://localhost:11434/v1 · For Mistral: https://api.mistral.ai/v1',
+      showBaseUrl: true,
+      defaultModel: 'gpt-4o-mini',
+      models: [
+        { value: 'gpt-4o-mini',          label: 'gpt-4o-mini — cheapest OpenAI' },
+        { value: 'gpt-4o',               label: 'gpt-4o' },
+        { value: 'gpt-4-turbo',          label: 'gpt-4-turbo' },
+        { value: 'open-mistral-nemo',    label: 'open-mistral-nemo — free via Mistral' },
+        { value: 'mistral-small-latest', label: 'mistral-small-latest' },
+        { value: 'mistral-large-latest', label: 'mistral-large-latest' },
+        { value: 'llama3.2',             label: 'llama3.2 — local via Ollama' },
+        { value: 'gemma2',               label: 'gemma2 — local via Ollama' },
+      ],
+      modelHint: '',
+    },
+    anthropic: {
+      baseUrlPlaceholder: 'https://api.anthropic.com/v1',
+      baseUrlHint: 'Leave as default unless using a proxy.',
+      showBaseUrl: true,
+      defaultModel: 'claude-haiku-4-5',
+      models: [
+        { value: 'claude-haiku-4-5',  label: 'claude-haiku-4-5 — cheapest' },
+        { value: 'claude-sonnet-4-5', label: 'claude-sonnet-4-5 — balanced' },
+        { value: 'claude-opus-4-5',   label: 'claude-opus-4-5 — most capable' },
+        { value: 'claude-sonnet-4',   label: 'claude-sonnet-4' },
+        { value: 'claude-opus-4',     label: 'claude-opus-4' },
+      ],
+      modelHint: 'Get your API key at console.anthropic.com',
+    },
+    google: {
+      baseUrlPlaceholder: '',
+      baseUrlHint: 'Not required — the endpoint is constructed automatically from your model name.',
+      showBaseUrl: false,
+      defaultModel: 'gemini-2.5-flash',
+      models: [
+        { value: 'gemini-2.5-flash',      label: 'gemini-2.5-flash — free tier available' },
+        { value: 'gemini-2.0-flash',      label: 'gemini-2.0-flash' },
+        { value: 'gemini-2.0-flash-lite', label: 'gemini-2.0-flash-lite — cheapest' },
+        { value: 'gemini-1.5-flash',      label: 'gemini-1.5-flash' },
+        { value: 'gemini-1.5-pro',        label: 'gemini-1.5-pro' },
+      ],
+      modelHint: 'Get your API key (free) at aistudio.google.com',
+    },
+  };
+
+  // All default models across providers — used to detect whether the current value is a provider default
+  var allDefaults = Object.values(PROVIDERS).map(function(p) { return p.defaultModel; });
+
+  function update(provider, autoFillModel) {
+    var cfg = PROVIDERS[provider] || PROVIDERS.openai;
+    var baseUrlRow = document.getElementById('base-url-row');
+    var baseUrlInput = document.getElementById('llm-base-url');
+    var baseUrlHint = document.getElementById('base-url-hint');
+    var datalist = document.getElementById('model-suggestions');
+    var modelInput = document.getElementById('llm-model');
+    var modelHint = document.getElementById('model-hint');
+
+    baseUrlRow.style.display = cfg.showBaseUrl ? '' : 'none';
+    baseUrlInput.placeholder = cfg.baseUrlPlaceholder;
+    baseUrlHint.textContent = cfg.baseUrlHint;
+
+    datalist.innerHTML = '';
+    cfg.models.forEach(function(m) {
+      var opt = document.createElement('option');
+      opt.value = m.value;
+      opt.label = m.label;
+      datalist.appendChild(opt);
+    });
+    modelHint.textContent = cfg.modelHint;
+
+    // Auto-fill model if the field is empty or still holds another provider's default
+    if (autoFillModel && (!modelInput.value || allDefaults.indexOf(modelInput.value) !== -1)) {
+      modelInput.value = cfg.defaultModel;
+    }
+  }
+
+  var sel = document.getElementById('llm-provider');
+  // On page load: apply UI state without overwriting a saved model
+  update(sel.value, false);
+  sel.addEventListener('change', function() { update(this.value, true); });
+})();
+</script>
 
 <!-- Refresh settings -->
 <article>
@@ -57,16 +174,16 @@
   <label>
     <input type="checkbox" name="auto_refresh_paused" {% if cfg.get('auto_refresh_paused') %}checked{% endif %} role="switch">
     Pause auto-refresh globally
-    <small>Individual playlist settings are preserved and will take effect when resumed.</small>
   </label>
+  <small>Individual playlist settings are preserved and will take effect when resumed.</small>
   <label>Library poll interval (seconds)
     <input type="number" name="poll_interval" value="{{ cfg.get('poll_interval', 900) }}" min="60">
-    <small>Default: 900 (15 minutes)</small>
   </label>
+  <small>Default: 900 (15 minutes)</small>
   <label>Debounce window (seconds)
     <input type="number" name="debounce_window" value="{{ cfg.get('debounce_window', 300) }}" min="30">
-    <small>Wait this long after last detected change before triggering refresh.</small>
   </label>
+  <small>Wait this long after last detected change before triggering refresh.</small>
   <label>Max LLM calls per refresh cycle
     <input type="number" name="max_llm_calls_per_cycle" value="{{ cfg.get('max_llm_calls_per_cycle', 10) }}" min="1">
   </label>

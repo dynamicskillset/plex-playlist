@@ -52,15 +52,12 @@ details summary {
   cursor: pointer;
 }
 
-/* Touch-friendly buttons */
+/* Touch-friendly buttons — but not inside tables */
 button, [role="button"] {
   min-height: 44px;
 }
-
-/* Scrollable table wrapper for narrow viewports */
-.table-scroll {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+table button, table [role="button"] {
+  min-height: unset;
 }
 
 /* Responsive 2-column form grid */
@@ -73,5 +70,40 @@ button, [role="button"] {
 @media (max-width: 600px) {
   .form-2col {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Icon-only action buttons */
+.icon-btn {
+  padding: 0.15rem 0.5rem;
+  font-size: 1rem;
+  line-height: 1;
+  min-width: unset;
+  width: 2.2rem;
+}
+
+/* Frequency toggle button */
+.freq-btn {
+  padding: 0.1rem 0.5rem;
+  font-size: 0.8rem;
+  min-width: 5rem;
+}
+
+/* Allow long playlist names to wrap */
+.col-name {
+  min-width: 8rem;
+  word-break: break-word;
+}
+
+/* Responsive table columns — hide less essential columns as viewport narrows */
+@media (max-width: 1000px) {
+  .col-hide-md {
+    display: none;
+  }
+}
+
+@media (max-width: 700px) {
+  .col-hide-sm {
+    display: none;
   }
 }

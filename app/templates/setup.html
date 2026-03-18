@@ -41,31 +41,101 @@
     </details>
 
     {% elif step == "llm" %}
-    <p>Configure your LLM provider. Any OpenAI-compatible API works (OpenAI, local Ollama, etc.).</p>
+    <p>Choose your AI provider and enter your API key.</p>
 
     {% if error %}<article class="error-msg">{{ error }}</article>{% endif %}
 
     <form method="post" action="/setup/llm">
-      <label>Base URL
-        <input type="url" name="base_url" value="https://api.openai.com/v1" required>
-        <small>For Ollama: http://localhost:11434/v1</small>
+      <label>Provider
+        <select name="provider" id="llm-provider">
+          <option value="openai">OpenAI / Mistral / Ollama (OpenAI-compatible)</option>
+          <option value="anthropic">Anthropic (Claude)</option>
+          <option value="google">Google (Gemini)</option>
+        </select>
       </label>
+
+      <div id="base-url-row">
+        <label>Base URL
+          <input type="text" name="base_url" id="llm-base-url" placeholder="https://api.openai.com/v1">
+        </label>
+        <small id="base-url-hint"></small>
+      </div>
+
       <label>API key
         <input type="password" name="api_key" required>
       </label>
+
       <label>Model
-        <input type="text" name="model" placeholder="gpt-4o" required>
+        <input type="text" name="model" id="llm-model" list="model-suggestions" required>
+        <datalist id="model-suggestions"></datalist>
       </label>
+      <small id="model-hint"></small>
+
       <label>Context window (tokens)
-        <input type="number" name="context_window" placeholder="128000">
-        <small>Leave blank to use defaults for known models.</small>
+        <input type="number" name="context_window">
       </label>
+      <small>Leave blank to use defaults for known models.</small>
+
       <label>Temperature
         <input type="number" name="temperature" value="0.9" min="0" max="2" step="0.1">
-        <small>Higher = more variety between generations.</small>
       </label>
-      <button type="submit">Save and continue</button>
+      <small>Higher = more variety between generations.</small>
+
+      <button type="submit" style="margin-top:1rem;">Save and continue</button>
     </form>
+
+    <script>
+    (function() {
+      var PROVIDERS = {
+        openai: {
+          baseUrlPlaceholder: 'https://api.openai.com/v1',
+          baseUrlHint: 'For Ollama: http://localhost:11434/v1 · For Mistral: https://api.mistral.ai/v1',
+          showBaseUrl: true,
+          defaultModel: 'gpt-4o-mini',
+          models: ['gpt-4o-mini', 'gpt-4o', 'open-mistral-nemo', 'mistral-small-latest', 'llama3.2', 'gemma2'],
+          modelHint: '',
+        },
+        anthropic: {
+          baseUrlPlaceholder: 'https://api.anthropic.com/v1',
+          baseUrlHint: 'Leave as default unless using a proxy.',
+          showBaseUrl: true,
+          defaultModel: 'claude-haiku-4-5',
+          models: ['claude-haiku-4-5', 'claude-sonnet-4-5', 'claude-opus-4-5'],
+          modelHint: 'Get your API key at console.anthropic.com',
+        },
+        google: {
+          baseUrlPlaceholder: '',
+          baseUrlHint: 'Not required — constructed automatically.',
+          showBaseUrl: false,
+          defaultModel: 'gemini-2.5-flash',
+          models: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-pro'],
+          modelHint: 'Free tier available — get your API key at aistudio.google.com',
+        },
+      };
+      var allDefaults = Object.values(PROVIDERS).map(function(p) { return p.defaultModel; });
+
+      function update(provider) {
+        var cfg = PROVIDERS[provider] || PROVIDERS.openai;
+        document.getElementById('base-url-row').style.display = cfg.showBaseUrl ? '' : 'none';
+        document.getElementById('llm-base-url').placeholder = cfg.baseUrlPlaceholder;
+        document.getElementById('base-url-hint').textContent = cfg.baseUrlHint;
+        var datalist = document.getElementById('model-suggestions');
+        datalist.innerHTML = '';
+        cfg.models.forEach(function(m) {
+          var opt = document.createElement('option'); opt.value = m; datalist.appendChild(opt);
+        });
+        document.getElementById('model-hint').textContent = cfg.modelHint;
+        var modelInput = document.getElementById('llm-model');
+        if (!modelInput.value || allDefaults.indexOf(modelInput.value) !== -1) {
+          modelInput.value = cfg.defaultModel;
+        }
+      }
+
+      var sel = document.getElementById('llm-provider');
+      update(sel.value);
+      sel.addEventListener('change', function() { update(this.value); });
+    })();
+    </script>
     {% endif %}
   </main>
 </body>

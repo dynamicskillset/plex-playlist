@@ -9,12 +9,12 @@ from typing import Optional
 
 import aiosqlite
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from plexapi.exceptions import Unauthorized
 
-from .db import DB_PATH, config_get, config_get_all, config_set, init_db
+from .db import DB_PATH, config_delete, config_get, config_get_all, config_set, init_db
 from .generator import generate_playlist
 from .llm import LLMConfig, default_context_window, validate_llm_connection
 from .matching import LibraryIndex
@@ -44,18 +44,28 @@ state = AppState()
 
 # ── Lifespan ───────────────────────────────────────────────────────────────────
 
+async def _periodic_refresh_check():
+    """Enqueue a refresh cycle every 6 hours regardless of library changes."""
+    while True:
+        await asyncio.sleep(6 * 3600)
+        queue.enqueue(Job(type=JobType.REFRESH_CYCLE, payload={}))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     state.worker_task = asyncio.create_task(queue.run(_job_handlers()))
-    # Connect to Plex and build index in background — don't block startup
     asyncio.create_task(_try_connect_plex())
+    asyncio.create_task(_periodic_refresh_check())
     yield
     if state.worker_task:
         state.worker_task.cancel()
     if state.scheduler_task:
         state.scheduler_task.cancel()
 
+
+FREQUENCY_CYCLE = {None: "daily", "daily": "weekly", "weekly": "monthly", "monthly": None}
+FREQUENCY_LABELS = {"daily": "Daily", "weekly": "Weekly", "monthly": "Monthly", None: "Off"}
 
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory=str(os.path.join(os.path.dirname(__file__), "templates")))
@@ -113,8 +123,9 @@ def _start_scheduler() -> None:
 
 async def _is_setup_complete() -> bool:
     token = await config_get("plex_token")
-    llm_url = await config_get("llm_base_url")
-    return bool(token and llm_url)
+    llm_key = await config_get("llm_api_key")
+    llm_model = await config_get("llm_model")
+    return bool(token and llm_key and llm_model)
 
 
 # ── Job handlers ───────────────────────────────────────────────────────────────
@@ -132,10 +143,14 @@ def _job_handlers() -> dict:
 
 async def _get_llm_config() -> LLMConfig | None:
     cfg = await config_get_all()
-    base_url = cfg.get("llm_base_url")
     api_key = cfg.get("llm_api_key")
     model = cfg.get("llm_model")
-    if not (base_url and api_key and model):
+    provider = cfg.get("llm_provider", "openai")
+    if not (api_key and model):
+        return None
+    base_url = cfg.get("llm_base_url") or ""
+    # OpenAI-compatible requires a base URL
+    if provider == "openai" and not base_url:
         return None
     context_window = int(cfg.get("llm_context_window") or default_context_window(model))
     temperature = float(cfg.get("llm_temperature", 0.9))
@@ -145,6 +160,7 @@ async def _get_llm_config() -> LLMConfig | None:
         model=model,
         context_window=context_window,
         temperature=temperature,
+        provider=provider,
     )
 
 
@@ -250,8 +266,11 @@ async def _handle_refresh_cycle(job: Job) -> None:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            """SELECT id FROM playlists WHERE auto_refresh=1 AND status='ready'
-               ORDER BY last_refreshed_at ASC NULLS FIRST LIMIT ?""",
+            """SELECT id FROM playlists WHERE status='ready' AND (
+                (refresh_frequency='daily'   AND (last_refreshed_at IS NULL OR last_refreshed_at < datetime('now', '-1 day')))
+                OR (refresh_frequency='weekly'  AND (last_refreshed_at IS NULL OR last_refreshed_at < datetime('now', '-7 days')))
+                OR (refresh_frequency='monthly' AND (last_refreshed_at IS NULL OR last_refreshed_at < datetime('now', '-30 days')))
+            ) ORDER BY last_refreshed_at ASC NULLS FIRST LIMIT ?""",
             (call_cap,),
         ) as cur:
             rows = await cur.fetchall()
@@ -463,6 +482,9 @@ async def _mark_failed(playlist_id: int, reason: str) -> None:
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     if not await _is_setup_complete():
+        token = await config_get("plex_token")
+        if token:
+            return RedirectResponse("/setup?step=llm")
         return RedirectResponse("/setup")
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -578,32 +600,20 @@ async def setup_plex_indexing_progress():
 @app.post("/setup/llm")
 async def setup_llm(
     request: Request,
-    base_url: str = Form(),
-    api_key: str = Form(),
-    model: str = Form(),
+    provider: str = Form(default="openai"),
+    base_url: str = Form(default=""),
+    api_key: str = Form(default=""),
+    model: str = Form(default=""),
     context_window: str = Form(default=""),
     temperature: str = Form(default="0.9"),
 ):
     ctx_win = int(context_window) if context_window.strip() else default_context_window(model)
-    cfg = LLMConfig(
-        base_url=base_url.strip(),
-        api_key=api_key.strip(),
-        model=model.strip(),
-        context_window=ctx_win,
-        temperature=float(temperature),
-    )
-    ok = await validate_llm_connection(cfg)
-    if not ok:
-        return templates.TemplateResponse("setup.html", {
-            "request": request,
-            "step": "llm",
-            "error": "Could not connect to LLM. Check the base URL and API key.",
-        })
-    await config_set("llm_base_url", cfg.base_url)
-    await config_set("llm_api_key", cfg.api_key)
-    await config_set("llm_model", cfg.model)
-    await config_set("llm_context_window", cfg.context_window)
-    await config_set("llm_temperature", cfg.temperature)
+    await config_set("llm_provider", provider.strip())
+    await config_set("llm_base_url", base_url.strip())
+    await config_set("llm_api_key", api_key.strip())
+    await config_set("llm_model", model.strip())
+    await config_set("llm_context_window", ctx_win)
+    await config_set("llm_temperature", float(temperature))
     return RedirectResponse("/", status_code=303)
 
 
@@ -711,11 +721,14 @@ async def edit_prompt(playlist_id: int, prompt: str = Form()):
 @app.post("/playlists/{playlist_id}/toggle-auto-refresh")
 async def toggle_auto_refresh(playlist_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "UPDATE playlists SET auto_refresh = NOT auto_refresh WHERE id=?", (playlist_id,)
-        )
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT refresh_frequency FROM playlists WHERE id=?", (playlist_id,)) as cur:
+            row = await cur.fetchone()
+        current = row["refresh_frequency"] if row else None
+        new_freq = FREQUENCY_CYCLE.get(current)
+        await db.execute("UPDATE playlists SET refresh_frequency=? WHERE id=?", (new_freq, playlist_id))
         await db.commit()
-    return RedirectResponse(f"/playlists/{playlist_id}", status_code=303)
+    return JSONResponse({"refresh_frequency": new_freq, "label": FREQUENCY_LABELS[new_freq]})
 
 
 @app.post("/playlists/{playlist_id}/delete")
@@ -761,6 +774,7 @@ async def settings_page(request: Request):
 @app.post("/settings/save")
 async def save_settings(
     request: Request,
+    llm_provider: str = Form(default="openai"),
     llm_base_url: str = Form(default=""),
     llm_api_key: str = Form(default=""),
     llm_model: str = Form(default=""),
@@ -773,6 +787,7 @@ async def save_settings(
     auto_refresh_paused: str = Form(default=""),
 ):
     updates = {
+        "llm_provider": llm_provider.strip(),
         "llm_base_url": llm_base_url.strip(),
         "llm_api_key": llm_api_key.strip(),
         "llm_model": llm_model.strip(),
@@ -787,6 +802,16 @@ async def save_settings(
         updates["llm_context_window"] = int(llm_context_window)
     for k, v in updates.items():
         await config_set(k, v)
+    return RedirectResponse("/settings", status_code=303)
+
+
+@app.post("/settings/remove-llm")
+async def remove_llm():
+    await config_delete(
+        "llm_provider", "llm_base_url", "llm_api_key",
+        "llm_model", "llm_context_window", "llm_temperature",
+        "llm_cost_per_call",
+    )
     return RedirectResponse("/settings", status_code=303)
 
 

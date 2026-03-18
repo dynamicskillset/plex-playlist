@@ -49,22 +49,21 @@
 </details>
 
 {% if playlists %}
-<div class="table-scroll">
 <table>
   <thead>
     <tr>
       <th>Name</th>
       <th>Tracks</th>
-      <th>Match rate</th>
-      <th>Last refresh</th>
-      <th>Auto</th>
+      <th class="col-hide-md"><abbr title="Percentage of tracks suggested by the LLM that matched songs in your Plex library. Higher is better — low rates usually mean unusual artists or metadata mismatches.">Match rate</abbr></th>
+      <th class="col-hide-sm">Last refresh</th>
+      <th>Auto refresh</th>
       <th></th>
     </tr>
   </thead>
   <tbody>
   {% for p in playlists %}
   <tr>
-    <td>
+    <td class="col-name">
       <a href="/playlists/{{ p.id }}">{{ p.name }}</a>
       {% if p.used_sonic_analysis %}<small title="Generated with Sonic Analysis data"> SA</small>{% endif %}
       {% if p.status == 'generating' %}<small> ⏳ Generating…</small>{% endif %}
@@ -77,29 +76,60 @@
       {% endif %}
     </td>
     <td>{{ p.actual_track_count }}/{{ p.target_track_count }}</td>
-    <td>{% if p.hit_rate %}{{ "%.0f"|format(p.hit_rate) }}%{% else %}—{% endif %}</td>
-    <td>{{ p.last_refreshed_at or '—' }}</td>
+    <td class="col-hide-md">{% if p.hit_rate %}{{ "%.0f"|format(p.hit_rate) }}%{% else %}—{% endif %}</td>
+    <td class="col-hide-sm" data-date="{{ p.last_refreshed_at or '' }}">{{ p.last_refreshed_at or '—' }}</td>
     <td>
-      <form method="post" action="/playlists/{{ p.id }}/toggle-auto-refresh" style="display:inline;">
-        <button type="submit" class="outline secondary" style="padding:0.1rem 0.5rem; font-size:0.8rem;">
-          {{ 'On' if p.auto_refresh else 'Off' }}
-        </button>
-      </form>
+      <button type="button" class="outline secondary freq-btn" data-id="{{ p.id }}">
+        {{ (p.refresh_frequency or 'Off') | capitalize }}
+      </button>
     </td>
     <td style="white-space:nowrap;">
       <form method="post" action="/playlists/{{ p.id }}/refresh" style="display:inline;">
-        <button type="submit" class="outline" style="padding:0.1rem 0.5rem; font-size:0.8rem;">Refresh</button>
+        <button type="submit" class="icon-btn outline" title="Refresh now">↻</button>
       </form>
       <form method="post" action="/playlists/{{ p.id }}/delete" style="display:inline;"
             onsubmit="return confirm('Delete {{ p.name }}?')">
-        <button type="submit" class="outline contrast" style="padding:0.1rem 0.5rem; font-size:0.8rem;">Delete</button>
+        <button type="submit" class="icon-btn outline contrast" title="Delete">✕</button>
       </form>
     </td>
   </tr>
   {% endfor %}
   </tbody>
 </table>
-</div>
+
+<script>
+document.querySelectorAll('.freq-btn').forEach(function(btn) {
+  btn.addEventListener('click', async function() {
+    var res = await fetch('/playlists/' + this.dataset.id + '/toggle-auto-refresh', {method: 'POST'});
+    var data = await res.json();
+    this.textContent = data.label;
+  });
+});
+
+(function() {
+  var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  function ordinal(n) {
+    var s = ['th','st','nd','rd'], v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  }
+  function formatDate(raw) {
+    if (!raw) return '—';
+    var date = new Date(raw.replace(' ', 'T') + 'Z');
+    if (isNaN(date)) return raw;
+    var now = new Date();
+    var todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var thenMidnight  = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    var diffDays = Math.round((todayMidnight - thenMidnight) / 86400000);
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7)  return diffDays + ' days ago';
+    return ordinal(date.getDate()) + ' ' + MONTHS[date.getMonth()] + ' ' + date.getFullYear();
+  }
+  document.querySelectorAll('td[data-date]').forEach(function(td) {
+    td.textContent = formatDate(td.dataset.date);
+  });
+})();
+</script>
 
 {% else %}
 <article style="text-align:center; padding:3rem 1rem;">

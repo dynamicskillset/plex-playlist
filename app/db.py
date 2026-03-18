@@ -19,7 +19,18 @@ async def init_db() -> None:
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA foreign_keys=ON")
         await db.executescript(SCHEMA)
+        await _migrate(db)
         await db.commit()
+
+
+async def _migrate(db) -> None:
+    """Apply incremental schema migrations."""
+    # v2: replace boolean auto_refresh with refresh_frequency text
+    try:
+        await db.execute("ALTER TABLE playlists ADD COLUMN refresh_frequency TEXT")
+        await db.execute("UPDATE playlists SET refresh_frequency='daily' WHERE auto_refresh=1")
+    except Exception:
+        pass  # column already exists
 
 
 SCHEMA = """
@@ -31,6 +42,7 @@ CREATE TABLE IF NOT EXISTS playlists (
     target_track_count  INTEGER NOT NULL DEFAULT 50,
     actual_track_count  INTEGER NOT NULL DEFAULT 0,
     auto_refresh        BOOLEAN NOT NULL DEFAULT 1,
+    refresh_frequency   TEXT,
     status              TEXT NOT NULL DEFAULT 'generating',
     failure_reason      TEXT,
     used_sonic_analysis BOOLEAN NOT NULL DEFAULT 0,
@@ -96,6 +108,13 @@ async def config_set(key: str, value) -> None:
             "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
             (key, encoded),
         )
+        await db.commit()
+
+
+async def config_delete(*keys: str) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        for key in keys:
+            await db.execute("DELETE FROM config WHERE key = ?", (key,))
         await db.commit()
 
 
